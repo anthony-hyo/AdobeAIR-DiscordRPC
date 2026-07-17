@@ -1,6 +1,6 @@
 # AdobeAIR-DiscordRPC
 
-Fork of `AdobeAIR-DiscordRPC` used by AQW Pocket.
+Fork of `AdobeAIR-DiscordRPC`.
 
 ---
 
