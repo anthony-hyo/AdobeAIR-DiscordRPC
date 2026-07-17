@@ -43,9 +43,10 @@ jobs:
             -A ${{ matrix.cmake_arch }} `
             -DBUILD_EXAMPLES=OFF `
             -DBUILD_SHARED_LIBS=OFF `
+            -DCLANG_FORMAT_CMD=CLANG_FORMAT_CMD-NOTFOUND `
             "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cmake --build discord-rpc\build --config Release
+          cmake --build discord-rpc\build --config Release --target discord-rpc
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build native library
@@ -114,9 +115,10 @@ jobs:
             -G Xcode \
             -DBUILD_EXAMPLES=OFF \
             -DBUILD_SHARED_LIBS=OFF \
+            -DCLANG_FORMAT_CMD=CLANG_FORMAT_CMD-NOTFOUND \
             -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
             -DCMAKE_POLICY_VERSION_MINIMUM="3.5"
-          cmake --build discord-rpc/build --config Release
+          cmake --build discord-rpc/build --config Release --target discord-rpc
 
       - name: Build native library
         shell: bash
