@@ -1,6 +1,6 @@
 # AdobeAIR-DiscordRPC
 
-Fork of `AdobeAIR-DiscordRPC`.
+Fork of [aromaa/AdobeAIR-DiscordRPC](https://github.com/aromaa/AdobeAIR-DiscordRPC).
 
 ---
 
