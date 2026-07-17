@@ -246,3 +246,25 @@ jobs:
         with:
           name: DiscordRPC-ane
           path: DiscordRPC.ane
+
+  publish-release:
+    needs: package-extension
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download ANE
+        uses: actions/download-artifact@v4
+        with:
+          name: DiscordRPC-ane
+
+      - name: Publish latest release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: latest
+          body: "Latest DiscordRPC.ane build."
+          prerelease: true
+          files: DiscordRPC.ane
