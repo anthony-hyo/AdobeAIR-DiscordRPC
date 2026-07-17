@@ -1,8 +1,14 @@
 #include <stdlib.h>
-#include <malloc.h>
+#include <string.h>
 
 #include "discord_rpc.h"
 #include "FlashRuntimeExtensions.h"
+
+#if defined(_WIN32)
+#define AIR_EXPORT __declspec(dllexport)
+#else
+#define AIR_EXPORT __attribute__((visibility("default")))
+#endif
 
 FREContext dllContext;
 
@@ -231,12 +237,12 @@ void contextFinalizer(FREContext ctx)
 	Discord_Shutdown();
 }
 
-__declspec(dllexport) void ExtensionInitializer(void** extData, FREContextInitializer* ctxInitializer, FREContextFinalizer* ctxFinalizer)
+AIR_EXPORT void ExtensionInitializer(void** extData, FREContextInitializer* ctxInitializer, FREContextFinalizer* ctxFinalizer)
 {
 	*ctxInitializer = &contextInitializer; // The name of function that will intialize the extension context
 	*ctxFinalizer = &contextFinalizer; // The name of function that will finalize the extension context
 }
 
-__declspec(dllexport) void ExtensionFinalizer(void* extData)
+AIR_EXPORT void ExtensionFinalizer(void* extData)
 {
 }
