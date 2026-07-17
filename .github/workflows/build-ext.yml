@@ -1,0 +1,143 @@
+name: Build Extension
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build-platform:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86
+            msbuild_platform: Win32
+            native_output_dir: C\Release
+            ane_platform: Windows-x86
+          - arch: x64
+            msbuild_platform: x64
+            native_output_dir: C\x64\Release
+            ane_platform: Windows-x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@v2
+        with:
+          air-version: "51.3"
+          accept-license: true
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Checkout discord-rpc
+        uses: actions/checkout@v4
+        with:
+          repository: discord/discord-rpc
+          path: discord-rpc
+
+      - name: Prepare ActionScript sources
+        shell: powershell
+        run: |
+          if ("${{ matrix.ane_platform }}" -eq "Windows-x64") {
+            Copy-Item -Recurse -Force AS3\Windows-x86 AS3\Windows-x64
+          }
+
+      - name: Build discord-rpc
+        shell: powershell
+        run: |
+          cmake -S discord-rpc -B discord-rpc\build `
+            -A ${{ matrix.msbuild_platform }} `
+            -DBUILD_EXAMPLES=OFF `
+            -DBUILD_SHARED_LIBS=OFF `
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          cmake --build discord-rpc\build --config Release
+          Copy-Item discord-rpc\build\src\Release\discord-rpc.lib C\AdobeAIR-DiscordRPC\discord-rpc.lib -Force
+
+      - name: Build native library
+        shell: powershell
+        run: |
+          msbuild C\AdobeAIR-DiscordRPC.sln `
+            /m `
+            /p:Configuration=Release `
+            /p:Platform=${{ matrix.msbuild_platform }} `
+            /p:PlatformToolset=v143
+
+      - name: Build SWC
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path build | Out-Null
+          acompc `
+            -source-path AS3\${{ matrix.ane_platform }}\src `
+            -include-sources AS3\${{ matrix.ane_platform }}\src `
+            -output build\DiscordRPC-${{ matrix.ane_platform }}.swc
+
+      - name: Stage ANE platform files
+        shell: powershell
+        run: |
+          $platformDir = "build\${{ matrix.ane_platform }}"
+          New-Item -ItemType Directory -Force -Path $platformDir | Out-Null
+          Copy-Item "${{ matrix.native_output_dir }}\AdobeAIR-DiscordRPC.dll" $platformDir
+
+      - name: Upload SWC
+        uses: actions/upload-artifact@v4
+        with:
+          name: swc-${{ matrix.ane_platform }}
+          path: build/DiscordRPC-${{ matrix.ane_platform }}.swc
+
+      - name: Upload platform files
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-${{ matrix.ane_platform }}
+          path: build/${{ matrix.ane_platform }}/AdobeAIR-DiscordRPC.dll
+
+  package-extension:
+    needs: build-platform
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup AIR SDK
+        uses: joshtynjala/setup-adobe-air-action@v2
+        with:
+          air-version: "51.3"
+          accept-license: true
+
+      - name: Download SWCs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: swc-*
+          path: build
+          merge-multiple: true
+
+      - name: Download platform files
+        uses: actions/download-artifact@v4
+        with:
+          pattern: platform-*
+          path: Platform
+          merge-multiple: false
+
+      - name: Package ANE
+        shell: powershell
+        run: |
+          adt -package -target ane DiscordRPC.ane AS3\extension.xml `
+            -swc build\DiscordRPC-Windows-x86.swc `
+            -platform Windows-x86 `
+            -C Platform\platform-Windows-x86 . `
+            -swc build\DiscordRPC-Windows-x64.swc `
+            -platform Windows-x64 `
+            -C Platform\platform-Windows-x64 .
+
+      - name: Upload ANE
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiscordRPC-ane
+          path: DiscordRPC.ane
