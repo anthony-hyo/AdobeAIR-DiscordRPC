@@ -52,6 +52,6 @@ if(APPLE)
     )
 
     set_target_properties(AdobeAIR-DiscordRPC PROPERTIES
-        SUFFIX ".dylib"
+        FRAMEWORK TRUE
     )
 endif()

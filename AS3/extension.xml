@@ -11,7 +11,7 @@
 				<finalizer>ExtensionFinalizer</finalizer>
 			</applicationDeployment>
 		</platform>
-		<platform name="Windows-x64">
+		<platform name="Windows-x86-64">
 			<applicationDeployment>
 				<nativeLibrary>AdobeAIR-DiscordRPC.dll</nativeLibrary>
 				<initializer>ExtensionInitializer</initializer>
@@ -20,7 +20,7 @@
 		</platform>
 		<platform name="MacOS-x86-64">
 			<applicationDeployment>
-				<nativeLibrary>AdobeAIR-DiscordRPC.dylib</nativeLibrary>
+				<nativeLibrary>AdobeAIR-DiscordRPC.framework</nativeLibrary>
 				<initializer>ExtensionInitializer</initializer>
 				<finalizer>ExtensionFinalizer</finalizer>
 			</applicationDeployment>
