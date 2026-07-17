@@ -141,7 +141,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: platform-MacOS-x86-64
-          path: build/MacOS-x86-64/AdobeAIR-DiscordRPC.framework
+          path: build/MacOS-x86-64/AdobeAIR-DiscordRPC.framework/
 
   package-extension:
     needs:
@@ -191,6 +191,21 @@ jobs:
             "Platform\platform-MacOS-x86-64"
           ) | ForEach-Object {
             Copy-Item "$swcExtractDir\library.swf" $_
+          }
+
+      - name: Normalize macOS framework payload
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $platformDir = "Platform\platform-MacOS-x86-64"
+          $frameworkDir = "$platformDir\AdobeAIR-DiscordRPC.framework"
+          $looseBinary = "$platformDir\AdobeAIR-DiscordRPC"
+
+          if (-not (Test-Path $frameworkDir) -and (Test-Path $looseBinary)) {
+            New-Item -ItemType Directory -Force -Path $frameworkDir | Out-Null
+            Get-ChildItem $platformDir |
+              Where-Object { $_.Name -ne "AdobeAIR-DiscordRPC.framework" -and $_.Name -ne "library.swf" } |
+              ForEach-Object { Move-Item $_.FullName $frameworkDir }
           }
 
       - name: Validate platform payloads
