@@ -15,9 +15,13 @@ jobs:
       matrix:
         include:
           - cmake_arch: Win32
+            discord_static_dir: win32-static
+            fre_lib_relative: lib\win\FlashRuntimeExtensions.lib
             ane_platform: Windows-x86
           - cmake_arch: x64
-            ane_platform: Windows-x64
+            discord_static_dir: win64-static
+            fre_lib_relative: lib\win64\FlashRuntimeExtensions.lib
+            ane_platform: Windows-x86-64
 
     steps:
       - name: Checkout
@@ -29,45 +33,42 @@ jobs:
           air-version: "51.3"
           accept-license: true
 
-      - name: Checkout discord-rpc
-        uses: actions/checkout@v4
-        with:
-          repository: discord/discord-rpc
-          path: discord-rpc
-
-      - name: Build discord-rpc
+      - name: Download discord-rpc
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          cmake -S discord-rpc -B discord-rpc\build `
-            -A ${{ matrix.cmake_arch }} `
-            -DBUILD_EXAMPLES=OFF `
-            -DBUILD_SHARED_LIBS=OFF `
-            -DCLANG_FORMAT_CMD=CLANG_FORMAT_CMD-NOTFOUND `
-            "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cmake --build discord-rpc\build --config Release --target discord-rpc
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Invoke-WebRequest `
+            -Uri "https://github.com/discord/discord-rpc/releases/download/v3.4.0/discord-rpc-win.zip" `
+            -OutFile discord-rpc-win.zip
+          Expand-Archive discord-rpc-win.zip -DestinationPath .
 
       - name: Build native library
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
+          $freLibraryPath = Join-Path $env:AIR_HOME "${{ matrix.fre_lib_relative }}"
+          $freLibrary = if (Test-Path $freLibraryPath) { Get-Item $freLibraryPath } else { $null }
+
+          if ($null -eq $freLibrary -and "${{ matrix.cmake_arch }}" -eq "Win32") {
+            $freLibrary = Get-Item C\AdobeAIR-DiscordRPC\FlashRuntimeExtensions.lib
+          }
+
+          if ($null -eq $freLibrary) {
+            Write-Host "Expected FRE import library: $freLibraryPath"
+            Write-Host "Available FlashRuntimeExtensions.lib files under AIR_HOME:"
+            Get-ChildItem -Path $env:AIR_HOME -Recurse -Filter FlashRuntimeExtensions.lib |
+              ForEach-Object { Write-Host $_.FullName }
+            throw "Could not find a ${{ matrix.cmake_arch }} FlashRuntimeExtensions.lib in AIR_HOME."
+          }
+
+          Write-Host "Using FRE import library: $($freLibrary.FullName)"
           cmake -S C\AdobeAIR-DiscordRPC -B build\native `
             -A ${{ matrix.cmake_arch }} `
-            -DDISCORD_RPC_LIBRARY=${{ github.workspace }}\discord-rpc\build\src\Release\discord-rpc.lib
+            -DDISCORD_RPC_LIBRARY=${{ github.workspace }}\discord-rpc\${{ matrix.discord_static_dir }}\lib\discord-rpc.lib `
+            -DFRE_LIBRARY="$($freLibrary.FullName)"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build build\native --config Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Build SWC
-        shell: powershell
-        run: |
-          New-Item -ItemType Directory -Force -Path build | Out-Null
-          acompc `
-            -source-path AS3\Windows-x86\src `
-            -include-sources AS3\Windows-x86\src `
-            -output build\DiscordRPC-${{ matrix.ane_platform }}.swc
 
       - name: Stage ANE platform files
         shell: powershell
@@ -75,12 +76,6 @@ jobs:
           $platformDir = "build\${{ matrix.ane_platform }}"
           New-Item -ItemType Directory -Force -Path $platformDir | Out-Null
           Copy-Item build\native\Release\AdobeAIR-DiscordRPC.dll $platformDir
-
-      - name: Upload SWC
-        uses: actions/upload-artifact@v4
-        with:
-          name: swc-${{ matrix.ane_platform }}
-          path: build/DiscordRPC-${{ matrix.ane_platform }}.swc
 
       - name: Upload platform files
         uses: actions/upload-artifact@v4
@@ -101,63 +96,36 @@ jobs:
           air-version: "51.3"
           accept-license: true
 
-      - name: Checkout discord-rpc
-        uses: actions/checkout@v4
-        with:
-          repository: discord/discord-rpc
-          path: discord-rpc
-
-      - name: Build discord-rpc
+      - name: Download discord-rpc
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S discord-rpc -B discord-rpc/build \
-            -G Xcode \
-            -DBUILD_EXAMPLES=OFF \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DCLANG_FORMAT_CMD=CLANG_FORMAT_CMD-NOTFOUND \
-            -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" \
-            -DCMAKE_POLICY_VERSION_MINIMUM="3.5"
-          cmake --build discord-rpc/build --config Release --target discord-rpc
+          curl -L \
+            -o discord-rpc-osx.zip \
+            https://github.com/discord/discord-rpc/releases/download/v3.4.0/discord-rpc-osx.zip
+          unzip -q discord-rpc-osx.zip
 
       - name: Build native library
         shell: bash
         run: |
           set -euo pipefail
-          DISCORD_RPC_LIB="$(find "$PWD/discord-rpc/build" \( -name 'libdiscord-rpc.a' -o -name 'discord-rpc.a' \) | head -n 1)"
-          test -n "$DISCORD_RPC_LIB"
           cmake -S C/AdobeAIR-DiscordRPC -B build/native \
             -G Xcode \
-            -DDISCORD_RPC_LIBRARY="$DISCORD_RPC_LIB" \
-            -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+            -DDISCORD_RPC_LIBRARY="$PWD/discord-rpc/osx-static/lib/libdiscord-rpc.a" \
+            -DCMAKE_OSX_ARCHITECTURES="x86_64"
           cmake --build build/native --config Release
-
-      - name: Build SWC
-        shell: bash
-        run: |
-          mkdir -p build
-          acompc \
-            -source-path AS3/Windows-x86/src \
-            -include-sources AS3/Windows-x86/src \
-            -output build/DiscordRPC-MacOS-x86-64.swc
 
       - name: Stage ANE platform files
         shell: bash
         run: |
           mkdir -p build/MacOS-x86-64
-          cp build/native/Release/AdobeAIR-DiscordRPC.dylib build/MacOS-x86-64/
-
-      - name: Upload SWC
-        uses: actions/upload-artifact@v4
-        with:
-          name: swc-MacOS-x86-64
-          path: build/DiscordRPC-MacOS-x86-64.swc
+          cp -R build/native/Release/AdobeAIR-DiscordRPC.framework build/MacOS-x86-64/
 
       - name: Upload platform files
         uses: actions/upload-artifact@v4
         with:
           name: platform-MacOS-x86-64
-          path: build/MacOS-x86-64/AdobeAIR-DiscordRPC.dylib
+          path: build/MacOS-x86-64/AdobeAIR-DiscordRPC.framework
 
   package-extension:
     needs:
@@ -175,13 +143,6 @@ jobs:
           air-version: "51.3"
           accept-license: true
 
-      - name: Download SWCs
-        uses: actions/download-artifact@v4
-        with:
-          pattern: swc-*
-          path: build
-          merge-multiple: true
-
       - name: Download platform files
         uses: actions/download-artifact@v4
         with:
@@ -189,17 +150,42 @@ jobs:
           path: Platform
           merge-multiple: false
 
+      - name: Build SWC
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path build | Out-Null
+          acompc `
+            -source-path AS3\Windows-x86\src `
+            -include-sources AS3\Windows-x86\src `
+            -swf-version=13 `
+            -output build\DiscordRPC.swc
+
+      - name: Stage library SWF
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $swcExtractDir = "build\swc"
+          New-Item -ItemType Directory -Force -Path $swcExtractDir | Out-Null
+          Copy-Item build\DiscordRPC.swc build\DiscordRPC.zip -Force
+          Expand-Archive build\DiscordRPC.zip -DestinationPath $swcExtractDir -Force
+
+          @(
+            "Platform\platform-Windows-x86",
+            "Platform\platform-Windows-x86-64",
+            "Platform\platform-MacOS-x86-64"
+          ) | ForEach-Object {
+            Copy-Item "$swcExtractDir\library.swf" $_
+          }
+
       - name: Package ANE
         shell: powershell
         run: |
           adt -package -target ane DiscordRPC.ane AS3\extension.xml `
-            -swc build\DiscordRPC-Windows-x86.swc `
+            -swc build\DiscordRPC.swc `
             -platform Windows-x86 `
             -C Platform\platform-Windows-x86 . `
-            -swc build\DiscordRPC-Windows-x64.swc `
-            -platform Windows-x64 `
-            -C Platform\platform-Windows-x64 . `
-            -swc build\DiscordRPC-MacOS-x86-64.swc `
+            -platform Windows-x86-64 `
+            -C Platform\platform-Windows-x86-64 . `
             -platform MacOS-x86-64 `
             -C Platform\platform-MacOS-x86-64 .
 
