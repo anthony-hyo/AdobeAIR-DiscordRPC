@@ -118,8 +118,24 @@ jobs:
       - name: Stage ANE platform files
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p build/MacOS-x86-64
           cp -R build/native/Release/AdobeAIR-DiscordRPC.framework build/MacOS-x86-64/
+          framework="build/MacOS-x86-64/AdobeAIR-DiscordRPC.framework"
+
+          if [ -L "$framework/AdobeAIR-DiscordRPC" ]; then
+            target="$(readlink "$framework/AdobeAIR-DiscordRPC")"
+            rm "$framework/AdobeAIR-DiscordRPC"
+            cp "$framework/$target" "$framework/AdobeAIR-DiscordRPC"
+          fi
+
+          if [ -L "$framework/Resources" ]; then
+            target="$(readlink "$framework/Resources")"
+            rm "$framework/Resources"
+            cp -R "$framework/$target" "$framework/Resources"
+          fi
+
+          test -f "$framework/AdobeAIR-DiscordRPC"
 
       - name: Upload platform files
         uses: actions/upload-artifact@v4
@@ -175,6 +191,27 @@ jobs:
             "Platform\platform-MacOS-x86-64"
           ) | ForEach-Object {
             Copy-Item "$swcExtractDir\library.swf" $_
+          }
+
+      - name: Validate platform payloads
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $expectedFiles = @(
+            "Platform\platform-Windows-x86\AdobeAIR-DiscordRPC.dll",
+            "Platform\platform-Windows-x86-64\AdobeAIR-DiscordRPC.dll",
+            "Platform\platform-MacOS-x86-64\AdobeAIR-DiscordRPC.framework\AdobeAIR-DiscordRPC",
+            "Platform\platform-Windows-x86\library.swf",
+            "Platform\platform-Windows-x86-64\library.swf",
+            "Platform\platform-MacOS-x86-64\library.swf"
+          )
+
+          foreach ($file in $expectedFiles) {
+            if (-not (Test-Path $file)) {
+              Write-Host "Platform directory contents:"
+              Get-ChildItem Platform -Recurse | ForEach-Object { Write-Host $_.FullName }
+              throw "Missing expected ANE payload file: $file"
+            }
           }
 
       - name: Package ANE
